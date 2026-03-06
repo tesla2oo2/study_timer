@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Timer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 400px;
+            width: 90vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        /* Streak sits naturally in flow, no absolute positioning */
+        .streak {
+            font-size: 1rem;
+            font-weight: 500;
+            opacity: 0.85;
+            letter-spacing: 0.02em;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+        }
+
+        .mode-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.65rem 1.4rem;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .mode-btn.active {
+            background: rgba(255, 255, 255, 0.28);
+            border-color: rgba(255, 255, 255, 0.7);
+            transform: translateY(-2px);
+        }
+
+        .mode-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .timer-input input {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.9rem 1.2rem;
+            border-radius: 16px;
+            font-size: 2rem;
+            font-weight: 300;
+            text-align: center;
+            width: 120px;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .timer-input input::placeholder {
+            color: rgba(255, 255, 255, 0.55);
+        }
+
+        .timer-input input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        /* Remove number input arrows */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+        }
+        input[type=number] { -moz-appearance: textfield; }
+
+        .timer-display {
+            font-size: 6rem;
+            font-weight: 200;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.05em;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            line-height: 1;
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.9rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.9rem 1.8rem;
+            border: none;
+            border-radius: 14px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
+            min-width: 95px;
+            touch-action: manipulation;
+            color: white;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-start  { background: rgba(34, 197, 94, 0.82); }
+        .btn-pause  { background: rgba(245, 158, 11, 0.82); }
+        .btn-reset  { background: rgba(239, 68, 68, 0.75); }
+
+        .btn:hover  { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.25); }
+        .btn:active { transform: translateY(0); }
+
+        .hidden { display: none !important; }
+
+        @media (max-width: 380px) {
+            .timer-display { font-size: 4.5rem; }
+            .timer-input input { font-size: 1.5rem; width: 100px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="streak">Streak: <span id="streakCount">0</span> days</div>
+
+    <div class="mode-selector">
+        <button class="mode-btn active" data-mode="study">Study</button>
+        <button class="mode-btn"        data-mode="break">Break</button>
+    </div>
+
+    <!-- FIX: each input managed by JS only, no conflicting CSS class system -->
+    <div class="timer-input" id="studyInputWrap">
+        <input type="number" id="studyMinutes" placeholder="25" min="1" max="120">
+    </div>
+
+    <div class="timer-input hidden" id="breakInputWrap">
+        <input type="number" id="breakMinutes" placeholder="5" min="1" max="30">
+    </div>
+
+    <div class="timer-display" id="timerDisplay">00:00</div>
+
+    <div class="controls">
+        <button class="btn btn-start" id="startBtn">Start</button>
+        <button class="btn btn-pause hidden" id="pauseBtn">Pause</button>
+        <button class="btn btn-reset" id="resetBtn">Reset</button>
+    </div>
+</div>
+
+<script>
+class StudyTimer {
+    constructor() {
+        this.isRunning    = false;
+        this.isStudyMode  = true;
+        this.currentMode  = 'study';
+        this.remainingTime = 0;
+        this.interval     = null;
+        this.streak       = 0;
+
+        this.initTelegram();
+        this.initElements();
+        this.loadStreak();
+        this.updateDisplay();
+        this.bindEvents();
+    }
+
+    initTelegram() {
+        if (window.Telegram?.WebApp) {
+            Telegram.WebApp.ready();
+            Telegram.WebApp.expand();
+            // FIX: don't override gradient with Telegram theme colors
+        }
+    }
+
+    initElements() {
+        this.el = {
+            studyInputWrap : document.getElementById('studyInputWrap'),
+            breakInputWrap : document.getElementById('breakInputWrap'),
+            studyMinutes   : document.getElementById('studyMinutes'),
+            breakMinutes   : document.getElementById('breakMinutes'),
+            timerDisplay   : document.getElementById('timerDisplay'),
+            startBtn       : document.getElementById('startBtn'),
+            pauseBtn       : document.getElementById('pauseBtn'),
+            resetBtn       : document.getElementById('resetBtn'),
+            streakCount    : document.getElementById('streakCount'),
+        };
+    }
+
+    bindEvents() {
+        document.querySelectorAll('.mode-btn').forEach(btn =>
+            btn.addEventListener('click', e => this.switchMode(e.target.dataset.mode))
+        );
+        this.el.startBtn.addEventListener('click', () => this.start());
+        this.el.pauseBtn.addEventListener('click', () => this.pause());
+        this.el.resetBtn.addEventListener('click', () => this.reset());
+        this.el.studyMinutes.addEventListener('input', () => { if (!this.isRunning) this.syncTime(); });
+        this.el.breakMinutes.addEventListener('input', () => { if (!this.isRunning) this.syncTime(); });
+    }
+
+    // FIX: properly show/hide inputs using .hidden class in JS
+    switchMode(mode) {
+        if (this.isRunning) return; // don't switch mid-session
+
+        this.currentMode = mode;
+        this.isStudyMode = mode === 'study';
+
+        document.querySelectorAll('.mode-btn').forEach(btn =>
+            btn.classList.toggle('active', btn.dataset.mode === mode)
+        );
+
+        // FIX: one source of truth for visibility
+        this.el.studyInputWrap.classList.toggle('hidden', mode !== 'study');
+        this.el.breakInputWrap.classList.toggle('hidden', mode !== 'break');
+
+        this.syncTime();
+        this.updateDisplay();
+    }
+
+    syncTime() {
+        const input   = this.isStudyMode ? this.el.studyMinutes : this.el.breakMinutes;
+        const minutes = parseInt(input.value) || 0;
+        this.remainingTime = minutes * 60;
+        this.updateDisplay();
+    }
+
+    formatTime(s) {
+        const m = Math.floor(s / 60);
+        return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+    }
+
+    updateDisplay() {
+        this.el.timerDisplay.textContent = this.formatTime(this.remainingTime);
+    }
+
+    start() {
+        if (this.remainingTime <= 0) {
+            const input   = this.isStudyMode ? this.el.studyMinutes : this.el.breakMinutes;
+            const minutes = parseInt(input.value) || (this.isStudyMode ? 25 : 5);
+            this.remainingTime = minutes * 60;
+        }
+        if (this.isRunning) return;
+
+        this.isRunning = true;
+        this.el.startBtn.classList.add('hidden');
+        this.el.pauseBtn.classList.remove('hidden');
+
+        this.interval = setInterval(() => {
+            this.remainingTime--;
+            this.updateDisplay();
+            if (this.remainingTime <= 0) this.timerComplete();
+        }, 1000);
+    }
+
+    pause() {
+        this.isRunning = false;
+        clearInterval(this.interval);
+        this.el.startBtn.classList.remove('hidden');
+        this.el.pauseBtn.classList.add('hidden');
+    }
+
+    reset() {
+        this.pause();
+        this.syncTime();
+    }
+
+    timerComplete() {
+        this.pause();
+
+        // Haptic for Telegram
+        window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+
+        // FIX: audio fallback for non-Telegram environments
+        this.playBeep();
+
+        if (this.isStudyMode) {
+            const today     = new Date().toDateString();
+            const lastStudy = localStorage.getItem('lastStudyDate');
+            if (lastStudy !== today) {
+                this.streak++;
+                localStorage.setItem('studyStreak',   this.streak);
+                localStorage.setItem('lastStudyDate', today);
+                this.updateStreakDisplay();
+            }
+        }
+    }
+
+    // FIX: simple beep using Web Audio API — works everywhere
+    playBeep() {
+        try {
+            const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+            const osc  = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 880;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.4, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 1.2);
+        } catch(e) { /* silent fail */ }
+    }
+
+    loadStreak() {
+        this.streak = parseInt(localStorage.getItem('studyStreak')) || 0;
+        this.updateStreakDisplay();
+    }
+
+    updateStreakDisplay() {
+        this.el.streakCount.textContent = this.streak;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => new StudyTimer());
+
+// Prevent accidental zoom on iOS
+document.addEventListener('touchstart', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+let lastTouch = 0;
+document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTouch <= 300) e.preventDefault();
+    lastTouch = now;
+}, false);
+</script>
+</body>
+</html>
